@@ -157,22 +157,33 @@ const NOTICES = [
 ];
 
 const STUDENTS = [
-  { admissionNo: 'ADM-1001', rollNo: '1', firstName: 'Aarav', lastName: 'Sharma' },
-  { admissionNo: 'ADM-1002', rollNo: '2', firstName: 'Diya', lastName: 'Verma' },
-  { admissionNo: 'ADM-1003', rollNo: '3', firstName: 'Kabir', lastName: 'Khan' },
-  { admissionNo: 'ADM-1004', rollNo: '4', firstName: 'Meera', lastName: 'Nair' },
-  { admissionNo: 'ADM-1005', rollNo: '5', firstName: 'Vihaan', lastName: 'Gupta' },
-  { admissionNo: 'ADM-1006', rollNo: '6', firstName: 'Ananya', lastName: 'Iyer' },
-  { admissionNo: 'ADM-1007', rollNo: '7', firstName: 'Reyansh', lastName: 'Patel' },
-  { admissionNo: 'ADM-1008', rollNo: '8', firstName: 'Ishita', lastName: 'Rao' },
-  { admissionNo: 'ADM-1009', rollNo: '9', firstName: 'Arjun', lastName: 'Mehta' },
-  { admissionNo: 'ADM-1010', rollNo: '10', firstName: 'Saanvi', lastName: 'Joshi' },
-  { admissionNo: 'ADM-1011', rollNo: '11', firstName: 'Aditya', lastName: 'Kulkarni' },
-  { admissionNo: 'ADM-1012', rollNo: '12', firstName: 'Anika', lastName: 'Menon' },
-  { admissionNo: 'ADM-1013', rollNo: '13', firstName: 'Vivaan', lastName: 'Chauhan' },
-  { admissionNo: 'ADM-1014', rollNo: '14', firstName: 'Kiara', lastName: 'Bose' },
-  { admissionNo: 'ADM-1015', rollNo: '15', firstName: 'Ayaan', lastName: 'Malhotra' },
-  { admissionNo: 'ADM-1016', rollNo: '16', firstName: 'Riya', lastName: 'Desai' },
+  { admissionNo: 'ADM-1001', rollNo: '1', firstName: 'Aarav', lastName: 'Sharma', gender: 'male' },
+  { admissionNo: 'ADM-1002', rollNo: '2', firstName: 'Diya', lastName: 'Verma', gender: 'female' },
+  { admissionNo: 'ADM-1003', rollNo: '3', firstName: 'Kabir', lastName: 'Khan', gender: 'male' },
+  { admissionNo: 'ADM-1004', rollNo: '4', firstName: 'Meera', lastName: 'Nair', gender: 'female' },
+  { admissionNo: 'ADM-1005', rollNo: '5', firstName: 'Vihaan', lastName: 'Gupta', gender: 'male' },
+  { admissionNo: 'ADM-1006', rollNo: '6', firstName: 'Ananya', lastName: 'Iyer', gender: 'female' },
+  { admissionNo: 'ADM-1007', rollNo: '7', firstName: 'Reyansh', lastName: 'Patel', gender: 'male' },
+  { admissionNo: 'ADM-1008', rollNo: '8', firstName: 'Ishita', lastName: 'Rao', gender: 'female' },
+  { admissionNo: 'ADM-1009', rollNo: '9', firstName: 'Arjun', lastName: 'Mehta', gender: 'male' },
+  { admissionNo: 'ADM-1010', rollNo: '10', firstName: 'Saanvi', lastName: 'Joshi', gender: 'female' },
+  { admissionNo: 'ADM-1011', rollNo: '11', firstName: 'Aditya', lastName: 'Kulkarni', gender: 'male' },
+  { admissionNo: 'ADM-1012', rollNo: '12', firstName: 'Anika', lastName: 'Menon', gender: 'female' },
+  { admissionNo: 'ADM-1013', rollNo: '13', firstName: 'Vivaan', lastName: 'Chauhan', gender: 'male' },
+  { admissionNo: 'ADM-1014', rollNo: '14', firstName: 'Kiara', lastName: 'Bose', gender: 'female' },
+  { admissionNo: 'ADM-1015', rollNo: '15', firstName: 'Ayaan', lastName: 'Malhotra', gender: 'male' },
+  { admissionNo: 'ADM-1016', rollNo: '16', firstName: 'Riya', lastName: 'Desai', gender: 'female' },
+];
+
+/** Extra directory-only students in the other seeded classes (6, 7, 9, 10)
+ * so the Class filter on Student Management has real matches beyond 8-A.
+ * Deliberately minimal — no attendance/homework/fee wiring — since they
+ * exist purely to make the Class/Status filters exercise every option. */
+const EXTRA_CLASS_STUDENTS = [
+  { admissionNo: 'ADM-2001', rollNo: '1', firstName: 'Naveen', lastName: 'Reddy', gender: 'male', class: '6', section: 'A', status: 'active' },
+  { admissionNo: 'ADM-2002', rollNo: '1', firstName: 'Pooja', lastName: 'Shetty', gender: 'female', class: '7', section: 'A', status: 'transferred' },
+  { admissionNo: 'ADM-2003', rollNo: '1', firstName: 'Farhan', lastName: 'Ali', gender: 'male', class: '9', section: 'A', status: 'inactive' },
+  { admissionNo: 'ADM-2004', rollNo: '1', firstName: 'Lakshmi', lastName: 'Pillai', gender: 'female', class: '10', section: 'A', status: 'suspended' },
 ];
 
 /** Directory-only teachers (not wired into class 8-A's timetable) so
@@ -376,8 +387,23 @@ const PARENT_CONTACTS = {
 async function upsertStudents(db) {
   const Student = db.model('Student');
   const created = [];
-  for (const s of STUDENTS) {
+
+  // Same deterministic pattern used by upsertFeeTransactions, so a given
+  // student's `feeStatus` snapshot here actually matches their real
+  // FeeTransaction rows instead of two systems disagreeing.
+  const FEE_STATUS_CYCLE = ['paid', 'paid', 'due', 'partial', 'overdue'];
+
+  for (let i = 0; i < STUDENTS.length; i += 1) {
+    const s = STUDENTS[i];
     const extra = PARENT_CONTACTS[s.admissionNo] || {};
+    const tuitionAmount = 42000 + (i % 3) * 1500;
+    const feeStatusValue = FEE_STATUS_CYCLE[i % FEE_STATUS_CYCLE.length];
+    const paidAmount = feeStatusValue === 'paid' ? tuitionAmount : feeStatusValue === 'partial' ? Math.round(tuitionAmount * 0.4) : 0;
+
+    // Two of the sixteen carry a non-active status so the Status filter has
+    // real matches beyond "active" — harmless to the rest of their seeded
+    // data (attendance/homework/fees are independent of this flag).
+    const status = i === 14 ? 'inactive' : i === 15 ? 'suspended' : 'active';
 
     const doc = await Student.findOneAndUpdate(
       { admissionNo: s.admissionNo },
@@ -385,9 +411,16 @@ async function upsertStudents(db) {
         $set: {
           admissionNo: s.admissionNo,
           rollNo: s.rollNo,
-          status: 'active',
-          personal: { firstName: s.firstName, lastName: s.lastName },
+          status,
+          personal: { firstName: s.firstName, lastName: s.lastName, gender: s.gender },
           academic: { academicYear: ACADEMIC_YEAR, class: '8', section: 'A' },
+          feeStatus: {
+            totalFee: tuitionAmount,
+            paidAmount,
+            dueAmount: tuitionAmount - paidAmount,
+            lastPaidDate: feeStatusValue === 'paid' ? new Date(Date.now() - ((i % 20) + 1) * DAY_MS) : null,
+            status: feeStatusValue,
+          },
           ...extra,
         },
       },
@@ -395,8 +428,35 @@ async function upsertStudents(db) {
     );
     created.push(doc);
   }
-  logger.info(`Students ready: ${created.length} enrolled in class 8-A.`);
+  logger.info(`Students ready: ${created.length} enrolled in class 8-A (gender, feeStatus and 2 non-active statuses set for filter coverage).`);
   return created;
+}
+
+/** Minimal directory-only students spread across the other seeded classes
+ * (see EXTRA_CLASSES / upsertExtraClasses) purely so the Class filter on
+ * Student Management has matches beyond "8" — otherwise selecting any
+ * other class always returns an empty list regardless of what's chosen. */
+async function upsertExtraClassStudents(db) {
+  const Student = db.model('Student');
+  let count = 0;
+  for (const s of EXTRA_CLASS_STUDENTS) {
+    await Student.findOneAndUpdate(
+      { admissionNo: s.admissionNo },
+      {
+        $set: {
+          admissionNo: s.admissionNo,
+          rollNo: s.rollNo,
+          status: s.status,
+          personal: { firstName: s.firstName, lastName: s.lastName, gender: s.gender },
+          academic: { academicYear: ACADEMIC_YEAR, class: s.class, section: s.section },
+          feeStatus: { totalFee: 40000, paidAmount: 0, dueAmount: 40000, status: 'due' },
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    count += 1;
+  }
+  logger.info(`Extra class students ready: ${count} (classes ${EXTRA_CLASS_STUDENTS.map(s => s.class).join(', ')} — statuses: ${EXTRA_CLASS_STUDENTS.map(s => s.status).join('/')}).`);
 }
 
 async function upsertNotices(db, actorId) {
@@ -1345,6 +1405,7 @@ async function seed() {
   await upsertExtraClasses(db);
   await upsertExtraTeachers(db);
   const students = await upsertStudents(db);
+  await upsertExtraClassStudents(db);
   const subjects = await upsertSubjects(db);
   const mathTopics = await upsertMathSyllabus(db, subjects.get('MATH8'));
   await upsertScienceSyllabus(db, subjects.get('SCI8'));
