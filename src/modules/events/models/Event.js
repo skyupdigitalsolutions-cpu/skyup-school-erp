@@ -41,6 +41,27 @@ const eventSchema = new mongoose.Schema({
     responsibility: String,
   }],
 
+  // Photos are stored by URL (paste a hosted image link) — this app has no
+  // dedicated file/object storage yet, so there's no raw upload endpoint.
+  photos: [{
+    url: { type: String, required: true },
+    caption: { type: String, default: null },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    uploadedAt: { type: Date, default: Date.now },
+  }],
+
+  // Approval trail for the draft → pending_approval → approved workflow.
+  // Rejection is modeled as a transition back to 'draft' with `notes` set to
+  // the rejection reason, rather than a separate enum value, so existing
+  // status-based queries elsewhere don't need to change.
+  approval: {
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    requestedAt: { type: Date, default: null },
+    approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    approvedAt: { type: Date, default: null },
+    notes: { type: String, default: null },
+  },
+
   participants: {
     students: [{ studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Student' }, name: String, class: String, attended: { type: Boolean, default: false } }],
     teachers: [{ teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Teacher' }, name: String, attended: { type: Boolean, default: false } }],
