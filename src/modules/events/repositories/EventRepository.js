@@ -36,8 +36,25 @@ class EventRepository extends BaseRepository {
     return { total, upcoming, ongoing, completed, cancelled, pendingApprovals: await model.countDocuments({ isDeleted: false, status: 'pending_approval' }) };
   }
 
-  async updateStatus(model, id, status, actorId) {
-    return model.findByIdAndUpdate(id, { status, updatedBy: actorId }, { new: true });
+  async updateStatus(model, id, status, actorId, notes) {
+    const set = { status, updatedBy: actorId };
+    if (status === 'pending_approval') {
+      set['approval.requestedBy'] = actorId;
+      set['approval.requestedAt'] = new Date();
+      set['approval.approvedBy'] = null;
+      set['approval.approvedAt'] = null;
+    }
+    if (status === 'approved') {
+      set['approval.approvedBy'] = actorId;
+      set['approval.approvedAt'] = new Date();
+      if (notes) set['approval.notes'] = notes;
+    }
+    // Rejection is modeled as sending it back to draft with the reason recorded.
+    if (status === 'draft' && notes) set['approval.notes'] = notes;
+
+    return model
+      .findByIdAndUpdate(id, set, { new: true })
+      .populate('approval.requestedBy approval.approvedBy', 'name email');
   }
 
   async addFeedback(model, id, feedback) {
