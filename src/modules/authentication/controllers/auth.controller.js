@@ -52,7 +52,10 @@ const AuthController = {
       password,
     });
 
-    res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions());
+    const cookieOpts = refreshCookieOptions();
+    res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts);
+    // TEMPORARY diagnostic — see matching note in the refresh handler.
+    console.log('[auth/login] origin=%s cookieOptionsUsed=%o isProd=%s', req.get('origin'), cookieOpts, config.isProd);
     // Access token is returned in the body — the client keeps it in memory.
     return ApiResponse.ok(res, { user, accessToken }, 'Signed in.');
   }),
@@ -60,7 +63,18 @@ const AuthController = {
   /** POST /auth/refresh  (tenant-scoped) */
   refresh: asyncHandler(async (req, res) => {
     const token = req.cookies ? req.cookies[REFRESH_COOKIE] : null;
-    if (!token) throw ApiError.unauthorized('No refresh token provided.');
+
+    if (!token) {
+      // TEMPORARY diagnostic — remove once the cross-origin cookie issue is
+      // confirmed fixed. Embedded directly in the 401 response body (visible
+      // right in the browser's Network tab) rather than server logs, since
+      // that's the panel already open when this fails.
+      throw ApiError.unauthorized(
+        `No refresh token cookie received. origin=${req.get('origin') || 'none'} ` +
+        `cookieHeaderPresent=${Boolean(req.headers.cookie)} ` +
+        `rawCookieHeader="${req.headers.cookie || ''}"`
+      );
+    }
 
     let decoded;
     try {
