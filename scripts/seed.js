@@ -1381,6 +1381,25 @@ async function upsertLeaveRequests(db, { teacher, actorId }) {
   logger.info(`Leave requests ready: ${count} (mixed pending/approved/rejected).`);
 }
 
+/**
+ * Runs one seed step in isolation: logs which step is starting, and if it
+ * throws, logs the full error and CONTINUES to the next step instead of
+ * aborting the entire script. Without this, a single failing step (e.g. a
+ * schema mismatch in one function) silently prevents every step after it
+ * from ever running — which is indistinguishable from "the data is just
+ * missing" unless you're staring at the raw stack trace. Wrapping every
+ * step means one bad step degrades gracefully instead of taking the whole
+ * seed run down with it, and any real error is now impossible to miss.
+ */
+async function step(label, fn) {
+  try {
+    await fn();
+  } catch (err) {
+    logger.error(`✘ SEED STEP FAILED: ${label}`);
+    logger.error(err.stack || err.message || err);
+  }
+}
+
 async function seed() {
   await connectionManager.connect();
 
@@ -1397,32 +1416,32 @@ async function seed() {
 
   const usersByEmail = await upsertUsers(User);
   const principalUser = usersByEmail.get('principal@demo.school');
-  await upsertNotices(db, principalUser._id);
+  await step('upsertNotices', () => upsertNotices(db, principalUser._id));
 
   const teacherUser = usersByEmail.get('teacher@demo.school');
   const teacher = await upsertTeacher(db, teacherUser);
   const klass = await upsertClass(db, teacher);
-  await upsertExtraClasses(db);
-  await upsertExtraTeachers(db);
+  await step('upsertExtraClasses', () => upsertExtraClasses(db));
+  await step('upsertExtraTeachers', () => upsertExtraTeachers(db));
   const students = await upsertStudents(db);
-  await upsertExtraClassStudents(db);
+  await step('upsertExtraClassStudents', () => upsertExtraClassStudents(db));
   const subjects = await upsertSubjects(db);
   const mathTopics = await upsertMathSyllabus(db, subjects.get('MATH8'));
-  await upsertScienceSyllabus(db, subjects.get('SCI8'));
-  await upsertTimetable(db, { klass, teacher, subjects });
-  await upsertSyllabusProgress(db, { klass, topics: mathTopics, teacherUser });
-  await upsertStudyMaterials(db, { klass, teacher, subjects, mathTopics });
-  await upsertDocuments(db, { teacher, teacherUser, principalUser });
-  await upsertHomework(db, { klass, teacher, teacherUser, subjects, students });
-  await upsertAttendance(db, { klass, students, teacherUser });
-  await upsertStudentAccounts(db, { students });
-  await upsertFeeTransactions(db, { students, actorId: principalUser._id });
-  await upsertExamScheduling(db, { klass, subjects, actorId: principalUser._id });
-  await upsertExaminations(db, { students, actorId: principalUser._id });
-  await upsertEvents(db, { actorId: principalUser._id, teacherUser });
-  await upsertCaretaker(db, { students, actorId: principalUser._id });
-  await upsertExtraCaretakers(db, { actorId: principalUser._id });
-  await upsertLeaveRequests(db, { teacher, actorId: principalUser._id });
+  await step('upsertScienceSyllabus', () => upsertScienceSyllabus(db, subjects.get('SCI8')));
+  await step('upsertTimetable', () => upsertTimetable(db, { klass, teacher, subjects }));
+  await step('upsertSyllabusProgress', () => upsertSyllabusProgress(db, { klass, topics: mathTopics, teacherUser }));
+  await step('upsertStudyMaterials', () => upsertStudyMaterials(db, { klass, teacher, subjects, mathTopics }));
+  await step('upsertDocuments', () => upsertDocuments(db, { teacher, teacherUser, principalUser }));
+  await step('upsertHomework', () => upsertHomework(db, { klass, teacher, teacherUser, subjects, students }));
+  await step('upsertAttendance', () => upsertAttendance(db, { klass, students, teacherUser }));
+  await step('upsertStudentAccounts', () => upsertStudentAccounts(db, { students }));
+  await step('upsertFeeTransactions', () => upsertFeeTransactions(db, { students, actorId: principalUser._id }));
+  await step('upsertExamScheduling (legacy)', () => upsertExamScheduling(db, { klass, subjects, actorId: principalUser._id }));
+  await step('upsertExaminations', () => upsertExaminations(db, { students, actorId: principalUser._id }));
+  await step('upsertEvents', () => upsertEvents(db, { actorId: principalUser._id, teacherUser }));
+  await step('upsertCaretaker', () => upsertCaretaker(db, { students, actorId: principalUser._id }));
+  await step('upsertExtraCaretakers', () => upsertExtraCaretakers(db, { actorId: principalUser._id }));
+  await step('upsertLeaveRequests', () => upsertLeaveRequests(db, { teacher, actorId: principalUser._id }));
 
   logger.info(`Seed complete. School Code: demo | password: ${DEFAULT_PASSWORD}`);
   await connectionManager.closeAll();
