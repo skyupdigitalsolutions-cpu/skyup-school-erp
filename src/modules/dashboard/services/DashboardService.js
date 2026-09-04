@@ -15,6 +15,8 @@ class DashboardService {
     const Class = this._tryModel(db, 'Class');
     const Event = this._tryModel(db, 'Event');
     const Examination = this._tryModel(db, 'Examination');
+    const FeeTransaction = this._tryModel(db, 'FeeTransaction');
+    const Attendance = this._tryModel(db, 'Attendance');
 
     const [
       totalStudents, activeStudents,
@@ -43,6 +45,18 @@ class DashboardService {
       ? await Examination.find({ isDeleted: false }).sort({ createdAt: -1 }).limit(5).select('name type academicYear status').lean()
       : [];
 
+    const feeByStatus = FeeTransaction
+      ? await FeeTransaction.aggregate([
+          { $group: { _id: '$status', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+        ])
+      : [];
+    const fees = { paid: 0, pending: 0, partial: 0, overdue: 0, refunded: 0 };
+    for (const row of feeByStatus) {
+      if (row._id in fees) fees[row._id] = row.total;
+    }
+
+    const attendanceTrend = Attendance ? await this._attendanceTrend(Attendance) : [];
+
     return {
       students: { total: totalStudents, active: activeStudents },
       teachers: { total: totalTeachers, active: activeTeachers },
@@ -50,8 +64,38 @@ class DashboardService {
       classes: { total: totalClasses },
       events: { upcoming: upcomingEvents, recent: recentEvents },
       exams: { ongoing: ongoingExams, recent: recentExams },
+      fees,
+      attendanceTrend,
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  /** Present/absent counts per day for the last 7 calendar days (for the dashboard trend chart). */
+  async _attendanceTrend(Attendance) {
+    const since = new Date();
+    since.setDate(since.getDate() - 6);
+    since.setHours(0, 0, 0, 0);
+
+    const rows = await Attendance.aggregate([
+      { $match: { date: { $gte: since } } },
+      {
+        $group: {
+          _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$date' } }, status: '$status' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const byDay = new Map();
+    for (const row of rows) {
+      const day = row._id.day;
+      if (!byDay.has(day)) byDay.set(day, { date: day, present: 0, absent: 0, late: 0 });
+      const bucket = byDay.get(day);
+      if (row._id.status === 'present') bucket.present += row.count;
+      else if (row._id.status === 'absent') bucket.absent += row.count;
+      else if (row._id.status === 'late') bucket.late += row.count;
+    }
+    return [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
   }
 
   /**
