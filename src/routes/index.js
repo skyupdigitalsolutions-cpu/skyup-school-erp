@@ -43,6 +43,9 @@ router.use('/classes', require('../modules/classes'));
 // ── Event Management ──────────────────────────────────────────────────────────
 router.use('/events', require('../modules/events'));
 
+// ── Generic image uploads (Cloudinary-backed) — used by Event photos, etc. ───
+router.use('/uploads', require('../modules/uploads/routes'));
+
 // ── Examination Management (legacy: exam logistics — directory/hall tickets) ──
 router.use('/exams', require('../modules/exams'));
 
