@@ -27,7 +27,7 @@ const envSchema = Joi.object({
   JWT_REFRESH_SECRET: Joi.string().min(16).required(),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
-  COOKIE_DOMAIN: Joi.string().default('localhost'),
+  COOKIE_DOMAIN: Joi.string().allow('').default(''),
   COOKIE_SECURE: Joi.boolean().default(false),
 
   RATE_LIMIT_WINDOW_MS: Joi.number().default(15 * 60 * 1000),
