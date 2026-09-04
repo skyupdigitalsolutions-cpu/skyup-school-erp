@@ -79,7 +79,15 @@ if (error) {
  */
 const config = Object.freeze({
   env: env.NODE_ENV,
-  isProd: env.NODE_ENV === 'production',
+  // Railway (and most PaaS platforms) inject their own environment markers
+  // automatically on every deployment, unlike NODE_ENV which requires the
+  // deployer to set it manually and is easy to forget. Cookie security
+  // (see auth.controller.js) depends on correctly detecting "not local dev"
+  // — falling back to NODE_ENV alone silently breaks cross-origin sessions
+  // on any platform where NODE_ENV was left at its 'development' default.
+  isProd: env.NODE_ENV === 'production' || Boolean(
+    process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_PROJECT_ID
+  ),
   isTest: env.NODE_ENV === 'test',
   port: env.PORT,
   apiPrefix: env.API_PREFIX,
