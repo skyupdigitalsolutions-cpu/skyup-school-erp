@@ -37,6 +37,7 @@ require('../src/modules/events/models/Event');
 require('../src/modules/caretaker/models/Caretaker');
 require('../src/modules/caretaker-transport/models/BusTrip');
 require('../src/modules/caretaker-transport/models/BusTripStudentLog');
+require('../src/modules/leave-management/models/LeaveRequest');
 
 const SCHOOL = {
   slug: 'demo',
@@ -123,6 +124,35 @@ const NOTICES = [
     priority: 'high',
     pinned: true,
   },
+  {
+    title: 'Fee payment reminder — Q2 tuition',
+    message: 'Parents are reminded that Q2 tuition fees are due by the end of this month. Late fees apply after the due date.',
+    category: 'urgent',
+    audience: 'parents',
+    priority: 'high',
+  },
+  {
+    title: 'Annual Sports Day registrations open',
+    message: 'Students interested in track and field events should register with their class teacher by Friday.',
+    category: 'event',
+    audience: 'students',
+    priority: 'medium',
+  },
+  {
+    title: 'Library books due for return',
+    message: 'All borrowed library books must be returned or renewed before the semester break.',
+    category: 'general',
+    audience: 'all',
+    priority: 'low',
+  },
+  {
+    title: 'PTA meeting — Grade 8',
+    message: 'A parent-teacher meeting for Grade 8 sections will be held next Saturday from 10 AM to 1 PM.',
+    category: 'general',
+    audience: 'parents',
+    priority: 'medium',
+    pinned: true,
+  },
 ];
 
 const STUDENTS = [
@@ -131,6 +161,56 @@ const STUDENTS = [
   { admissionNo: 'ADM-1003', rollNo: '3', firstName: 'Kabir', lastName: 'Khan' },
   { admissionNo: 'ADM-1004', rollNo: '4', firstName: 'Meera', lastName: 'Nair' },
   { admissionNo: 'ADM-1005', rollNo: '5', firstName: 'Vihaan', lastName: 'Gupta' },
+  { admissionNo: 'ADM-1006', rollNo: '6', firstName: 'Ananya', lastName: 'Iyer' },
+  { admissionNo: 'ADM-1007', rollNo: '7', firstName: 'Reyansh', lastName: 'Patel' },
+  { admissionNo: 'ADM-1008', rollNo: '8', firstName: 'Ishita', lastName: 'Rao' },
+  { admissionNo: 'ADM-1009', rollNo: '9', firstName: 'Arjun', lastName: 'Mehta' },
+  { admissionNo: 'ADM-1010', rollNo: '10', firstName: 'Saanvi', lastName: 'Joshi' },
+  { admissionNo: 'ADM-1011', rollNo: '11', firstName: 'Aditya', lastName: 'Kulkarni' },
+  { admissionNo: 'ADM-1012', rollNo: '12', firstName: 'Anika', lastName: 'Menon' },
+  { admissionNo: 'ADM-1013', rollNo: '13', firstName: 'Vivaan', lastName: 'Chauhan' },
+  { admissionNo: 'ADM-1014', rollNo: '14', firstName: 'Kiara', lastName: 'Bose' },
+  { admissionNo: 'ADM-1015', rollNo: '15', firstName: 'Ayaan', lastName: 'Malhotra' },
+  { admissionNo: 'ADM-1016', rollNo: '16', firstName: 'Riya', lastName: 'Desai' },
+];
+
+/** Directory-only teachers (not wired into class 8-A's timetable) so
+ * Teacher Management has more than one real row to browse. */
+const EXTRA_TEACHERS = [
+  {
+    employeeId: 'EMP-0002', firstName: 'Neha', lastName: 'Kapoor', phone: '9999900010',
+    email: 'neha.kapoor@demo.school', department: 'English', designation: 'TGT', employmentType: 'permanent',
+  },
+  {
+    employeeId: 'EMP-0003', firstName: 'Rohan', lastName: 'Bhatt', phone: '9999900011',
+    email: 'rohan.bhatt@demo.school', department: 'Science', designation: 'PGT', employmentType: 'permanent',
+  },
+  {
+    employeeId: 'EMP-0004', firstName: 'Sunita', lastName: 'Pillai', phone: '9999900012',
+    email: 'sunita.pillai@demo.school', department: 'Physical Education', designation: 'TGT', employmentType: 'contract',
+  },
+];
+
+/** Directory-only classes (no curriculum wiring) so Class Management shows
+ * a realistic spread across grades, not just 8-A. */
+const EXTRA_CLASSES = [
+  { name: '6', sections: ['A', 'B'] },
+  { name: '7', sections: ['A'] },
+  { name: '9', sections: ['A', 'B'] },
+  { name: '10', sections: ['A'] },
+];
+
+/** Directory-only caretakers on their own routes, alongside CARE-0001 (R-7)
+ * from upsertCaretaker below, so Caretaker Management has more than one row. */
+const EXTRA_CARETAKERS = [
+  {
+    caretakerId: 'CARE-0002', firstName: 'Manoj', lastName: 'Yadav', phone: '9999900020',
+    email: 'manoj.yadav@demo.school', vehicleNumber: 'MH-12-CD-7788', model: 'School Bus', route: 'R-3', capacity: 40,
+  },
+  {
+    caretakerId: 'CARE-0003', firstName: 'Geeta', lastName: 'Rane', phone: '9999900021',
+    email: 'geeta.rane@demo.school', vehicleNumber: 'MH-12-EF-9012', model: 'Tempo Traveller', route: 'R-9', capacity: 20,
+  },
 ];
 
 async function upsertUsers(User) {
@@ -193,6 +273,72 @@ async function upsertClass(db, teacher) {
   );
   logger.info(`Class ready: ${klass.name}-A (${klass.academicYear})`);
   return klass;
+}
+
+/** More classes across grades (directory-only, no curriculum wiring) so Class
+ * Management shows a realistic spread of grades, not just 8-A. */
+async function upsertExtraClasses(db) {
+  const Class = db.model('Class');
+  let count = 0;
+  for (const c of EXTRA_CLASSES) {
+    await Class.findOneAndUpdate(
+      { name: c.name, academicYear: ACADEMIC_YEAR },
+      { $set: { name: c.name, academicYear: ACADEMIC_YEAR, sections: c.sections } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    count += 1;
+  }
+  logger.info(`Extra classes ready: ${count} (grades ${EXTRA_CLASSES.map((c) => c.name).join(', ')}).`);
+}
+
+/** More teacher directory rows (not wired into any timetable) so Teacher
+ * Management has a realistic-sized staff list to browse. */
+async function upsertExtraTeachers(db) {
+  const Teacher = db.model('Teacher');
+  let count = 0;
+  for (const t of EXTRA_TEACHERS) {
+    await Teacher.findOneAndUpdate(
+      { employeeId: t.employeeId },
+      {
+        $set: {
+          employeeId: t.employeeId,
+          status: 'active',
+          personal: { firstName: t.firstName, lastName: t.lastName, phone: t.phone, email: t.email },
+          professional: { department: t.department, designation: t.designation, employmentType: t.employmentType },
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    count += 1;
+  }
+  logger.info(`Extra teachers ready: ${count} (${EXTRA_TEACHERS.map((t) => t.employeeId).join(', ')}).`);
+}
+
+/** More caretaker directory rows on their own routes, alongside CARE-0001. */
+async function upsertExtraCaretakers(db, { actorId }) {
+  const Caretaker = db.model('Caretaker');
+  let count = 0;
+  for (const c of EXTRA_CARETAKERS) {
+    await Caretaker.findOneAndUpdate(
+      { caretakerId: c.caretakerId },
+      {
+        $set: {
+          caretakerId: c.caretakerId,
+          status: 'active',
+          verificationStatus: 'verified',
+          personal: { firstName: c.firstName, lastName: c.lastName, phone: c.phone, email: c.email, relationship: 'driver' },
+          vehicleDetails: { vehicleNumber: c.vehicleNumber, model: c.model, driver: `${c.firstName} ${c.lastName}`, route: c.route, capacity: c.capacity, gpsStatus: 'unknown' },
+          assignedStudents: [],
+          loginEnabled: false,
+          createdBy: actorId,
+          updatedBy: actorId,
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    count += 1;
+  }
+  logger.info(`Extra caretakers ready: ${count} (routes ${EXTRA_CARETAKERS.map((c) => c.route).join(', ')}).`);
 }
 
 // Real parent-contact data for the 3 students on the caretaker's route R-7
@@ -674,38 +820,80 @@ async function upsertStudentAccounts(db, { students }) {
 }
 
 /**
- * A few real FeeTransaction rows for Aarav (ADM-1001) — one paid (a real
- * receipt), one overdue, one partial — so the student portal's Fees page
- * (parent-only) has genuine paid/outstanding/overdue numbers to show,
- * exercising every summary state instead of a flat zero. Keyed by
- * (student, feeType, academicYear) so re-seeding upserts in place rather
- * than duplicating rows.
+ * Real FeeTransaction rows across every seeded student — not just Aarav —
+ * so the Finance directory and the dashboard's fee-collection chart have a
+ * realistic spread of paid/pending/partial/overdue amounts instead of one
+ * student's numbers. Deterministic per-student pattern (not random) so
+ * re-seeding is idempotent and the numbers are stable across runs.
  */
 async function upsertFeeTransactions(db, { students, actorId }) {
   const FeeTransaction = db.model('FeeTransaction');
-  const target = students.find((s) => s.admissionNo === 'ADM-1001');
-  if (!target) return;
-
   const now = Date.now();
-  const items = [
-    {
-      feeType: 'tuition', amount: 45000, status: 'paid',
-      paymentMode: 'online', transactionRef: 'RCPT-2026-0001', paidDate: new Date(now - 15 * DAY_MS),
-    },
-    { feeType: 'transport', amount: 8000, status: 'overdue', dueDate: new Date(now - 10 * DAY_MS) },
-    { feeType: 'exam', amount: 3000, status: 'partial', dueDate: new Date(now + 12 * DAY_MS) },
-  ];
 
+  const STATUS_CYCLE = ['paid', 'paid', 'pending', 'partial', 'overdue'];
   let count = 0;
-  for (const item of items) {
+
+  for (let i = 0; i < students.length; i += 1) {
+    const student = students[i];
+    const status = STATUS_CYCLE[i % STATUS_CYCLE.length];
+    const tuitionAmount = 42000 + (i % 3) * 1500;
+
+    const tuition = { feeType: 'tuition', amount: tuitionAmount, status };
+    if (status === 'paid') {
+      tuition.paymentMode = ['online', 'cash', 'card', 'upi'][i % 4];
+      tuition.transactionRef = `RCPT-2026-${String(1000 + i).padStart(4, '0')}`;
+      tuition.paidDate = new Date(now - ((i % 20) + 1) * DAY_MS);
+    } else if (status === 'overdue') {
+      tuition.dueDate = new Date(now - ((i % 15) + 5) * DAY_MS);
+    } else {
+      tuition.dueDate = new Date(now + ((i % 10) + 3) * DAY_MS);
+    }
+
     await FeeTransaction.findOneAndUpdate(
-      { student: target._id, feeType: item.feeType, academicYear: ACADEMIC_YEAR },
-      { $set: { ...item, student: target._id, academicYear: ACADEMIC_YEAR, createdBy: actorId, updatedBy: actorId } },
+      { student: student._id, feeType: 'tuition', academicYear: ACADEMIC_YEAR },
+      { $set: { ...tuition, student: student._id, academicYear: ACADEMIC_YEAR, createdBy: actorId, updatedBy: actorId } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    count += 1;
+
+    // Every third student also has a transport fee row, for feeType variety.
+    if (i % 3 === 0) {
+      const transportStatus = i % 6 === 0 ? 'overdue' : 'paid';
+      const transport = { feeType: 'transport', amount: 8000, status: transportStatus };
+      if (transportStatus === 'paid') {
+        transport.paymentMode = 'cash';
+        transport.transactionRef = `RCPT-2026-T${String(1000 + i).padStart(4, '0')}`;
+        transport.paidDate = new Date(now - ((i % 12) + 2) * DAY_MS);
+      } else {
+        transport.dueDate = new Date(now - ((i % 8) + 3) * DAY_MS);
+      }
+      await FeeTransaction.findOneAndUpdate(
+        { student: student._id, feeType: 'transport', academicYear: ACADEMIC_YEAR },
+        { $set: { ...transport, student: student._id, academicYear: ACADEMIC_YEAR, createdBy: actorId, updatedBy: actorId } },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+      count += 1;
+    }
+  }
+
+  // Aarav additionally keeps his exam-fee row (partial) — a fee type not
+  // otherwise represented, so the finance breakdown has 3 distinct types.
+  const aarav = students.find((s) => s.admissionNo === 'ADM-1001');
+  if (aarav) {
+    await FeeTransaction.findOneAndUpdate(
+      { student: aarav._id, feeType: 'exam', academicYear: ACADEMIC_YEAR },
+      {
+        $set: {
+          feeType: 'exam', amount: 3000, status: 'partial', dueDate: new Date(now + 12 * DAY_MS),
+          student: aarav._id, academicYear: ACADEMIC_YEAR, createdBy: actorId, updatedBy: actorId,
+        },
+      },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
     count += 1;
   }
-  logger.info(`Fee transactions ready: ${count} row(s) for ${target.personal.firstName} ${target.personal.lastName} (1 paid, 1 overdue, 1 partial).`);
+
+  logger.info(`Fee transactions ready: ${count} row(s) across ${students.length} student(s) (tuition + transport + exam fee, mixed paid/pending/partial/overdue).`);
 }
 
 /**
@@ -809,6 +997,24 @@ async function upsertEvents(db, { actorId }) {
       schedule: { startDate: new Date(now + 20 * DAY_MS), endDate: new Date(now + 20 * DAY_MS) },
       venue: { address: 'City Science Museum' },
     },
+    {
+      eventId: 'EVT-2024-PARENTMEET', name: 'Parent-Teacher Meeting — Term 1', category: 'academic', status: 'approved',
+      description: 'Term 1 progress discussion for all grades, section-wise slots.',
+      schedule: { startDate: new Date(now + 8 * DAY_MS), endDate: new Date(now + 8 * DAY_MS) },
+      venue: { hall: 'Classrooms', seatingCapacity: 30 },
+    },
+    {
+      eventId: 'EVT-2024-INDEPENDENCE', name: 'Independence Day Celebration', category: 'cultural', status: 'completed',
+      description: 'Flag hoisting, patriotic performances, and a special assembly.',
+      schedule: { startDate: new Date(now - 20 * DAY_MS), endDate: new Date(now - 20 * DAY_MS) },
+      venue: { hall: 'Main Ground', seatingCapacity: 800 },
+    },
+    {
+      eventId: 'EVT-2024-QUIZ', name: 'Inter-House Quiz Competition', category: 'academic', status: 'approved',
+      description: 'General knowledge quiz between the four school houses.',
+      schedule: { startDate: new Date(now + 30 * DAY_MS), endDate: new Date(now + 30 * DAY_MS) },
+      venue: { hall: 'Auditorium', seatingCapacity: 400 },
+    },
   ];
 
   let count = 0;
@@ -904,6 +1110,58 @@ async function upsertCaretaker(db, { students, actorId }) {
   logger.info(`Caretaker ready: ${caretaker.caretakerId} (linked to ${caretakerUser.email}) on route R-7 with ${roster.length} student(s).`);
 }
 
+/**
+ * A realistic mixed set of leave requests — pending, approved, and rejected
+ * — across the class teacher and one caretaker, so Leave Management has
+ * more than an empty list to show and exercises every status filter.
+ */
+async function upsertLeaveRequests(db, { teacher, actorId }) {
+  const LeaveRequest = db.model('LeaveRequest');
+  const Caretaker = db.model('Caretaker');
+  const now = Date.now();
+
+  const caretaker = await Caretaker.findOne({ caretakerId: 'CARE-0001' });
+
+  const requests = [
+    {
+      applicantType: 'teacher', applicant: teacher._id, applicantModel: 'Teacher',
+      leaveType: 'sick', fromDate: new Date(now + 3 * DAY_MS), toDate: new Date(now + 4 * DAY_MS),
+      totalDays: 2, reason: 'Fever and viral infection, advised rest by doctor.', status: 'pending',
+    },
+    {
+      applicantType: 'teacher', applicant: teacher._id, applicantModel: 'Teacher',
+      leaveType: 'casual', fromDate: new Date(now - 20 * DAY_MS), toDate: new Date(now - 19 * DAY_MS),
+      totalDays: 2, reason: 'Family function out of town.', status: 'approved',
+      decidedBy: actorId, decidedAt: new Date(now - 22 * DAY_MS), approverRemarks: 'Approved — please arrange for a substitute.',
+    },
+    {
+      applicantType: 'teacher', applicant: teacher._id, applicantModel: 'Teacher',
+      leaveType: 'earned', fromDate: new Date(now - 60 * DAY_MS), toDate: new Date(now - 55 * DAY_MS),
+      totalDays: 6, reason: 'Planned vacation.', status: 'rejected',
+      decidedBy: actorId, decidedAt: new Date(now - 62 * DAY_MS), approverRemarks: 'Clashes with mid-term prep — please reschedule.',
+    },
+  ];
+
+  if (caretaker) {
+    requests.push({
+      applicantType: 'caretaker', applicant: caretaker._id, applicantModel: 'Caretaker',
+      leaveType: 'casual', fromDate: new Date(now + 1 * DAY_MS), toDate: new Date(now + 1 * DAY_MS),
+      totalDays: 1, reason: 'Personal work.', status: 'pending',
+    });
+  }
+
+  let count = 0;
+  for (const r of requests) {
+    await LeaveRequest.findOneAndUpdate(
+      { applicant: r.applicant, fromDate: r.fromDate, leaveType: r.leaveType },
+      { $set: r },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    count += 1;
+  }
+  logger.info(`Leave requests ready: ${count} (mixed pending/approved/rejected).`);
+}
+
 async function seed() {
   await connectionManager.connect();
 
@@ -925,6 +1183,8 @@ async function seed() {
   const teacherUser = usersByEmail.get('teacher@demo.school');
   const teacher = await upsertTeacher(db, teacherUser);
   const klass = await upsertClass(db, teacher);
+  await upsertExtraClasses(db);
+  await upsertExtraTeachers(db);
   const students = await upsertStudents(db);
   const subjects = await upsertSubjects(db);
   const mathTopics = await upsertMathSyllabus(db, subjects.get('MATH8'));
@@ -940,6 +1200,8 @@ async function seed() {
   await upsertExamScheduling(db, { klass, subjects, actorId: principalUser._id });
   await upsertEvents(db, { actorId: principalUser._id });
   await upsertCaretaker(db, { students, actorId: principalUser._id });
+  await upsertExtraCaretakers(db, { actorId: principalUser._id });
+  await upsertLeaveRequests(db, { teacher, actorId: principalUser._id });
 
   logger.info(`Seed complete. School Code: demo | password: ${DEFAULT_PASSWORD}`);
   await connectionManager.closeAll();
