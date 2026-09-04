@@ -38,6 +38,7 @@ require('../src/modules/caretaker/models/Caretaker');
 require('../src/modules/caretaker-transport/models/BusTrip');
 require('../src/modules/caretaker-transport/models/BusTripStudentLog');
 require('../src/modules/leave-management/models/LeaveRequest');
+require('../src/modules/exams/models/Examination');
 
 const SCHOOL = {
   slug: 'demo',
@@ -893,7 +894,25 @@ async function upsertFeeTransactions(db, { students, actorId }) {
     count += 1;
   }
 
-  logger.info(`Fee transactions ready: ${count} row(s) across ${students.length} student(s) (tuition + transport + exam fee, mixed paid/pending/partial/overdue).`);
+  // A second student rounds out every remaining feeType/status enum value
+  // (hostel, library, refunded) so the Finance filters have zero dead ends.
+  const diya = students.find((s) => s.admissionNo === 'ADM-1002');
+  if (diya) {
+    const extras = [
+      { feeType: 'hostel', amount: 60000, status: 'paid', paymentMode: 'online', transactionRef: 'RCPT-2026-H0002', paidDate: new Date(now - 18 * DAY_MS) },
+      { feeType: 'library', amount: 1500, status: 'refunded', paymentMode: 'cash', transactionRef: 'RCPT-2026-L0002', paidDate: new Date(now - 30 * DAY_MS) },
+    ];
+    for (const extra of extras) {
+      await FeeTransaction.findOneAndUpdate(
+        { student: diya._id, feeType: extra.feeType, academicYear: ACADEMIC_YEAR },
+        { $set: { ...extra, student: diya._id, academicYear: ACADEMIC_YEAR, createdBy: actorId, updatedBy: actorId } },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+      count += 1;
+    }
+  }
+
+  logger.info(`Fee transactions ready: ${count} row(s) across ${students.length} student(s) — every feeType and status enum represented.`);
 }
 
 /**
@@ -954,20 +973,129 @@ async function upsertExamScheduling(db, { klass, subjects, actorId }) {
 }
 
 /**
- * A small, realistic Event spread — including a draft AND a pending_approval
- * event alongside the public ones — so the student-portal Events feed's
- * publish-status filter has something real to prove itself against (not
- * just "the list happens to be empty"). Keyed by `eventId` so re-seeding
- * upserts in place. `Event` has no class/audience-targeting field at all, so
- * every event here is inherently school-wide.
+ * The Exam Management pages (ExamDirectory/AddExam/ExamDetail) read from the
+ * `Examination` model — a completely different model from the `Exam`/
+ * `ExamSchedule` pair seeded by `upsertExamScheduling` above (that pair backs
+ * an unrelated, unused-by-this-frontend module). Without this function the
+ * Examination collection was never touched by seeding at all, so the Exam
+ * Management page had zero real data and its type/status filters had
+ * nothing to match against. Spans every `type` and `status` enum value so
+ * every filter option returns something.
  */
-async function upsertEvents(db, { actorId }) {
+async function upsertExaminations(db, { students, actorId }) {
+  const Examination = db.model('Examination');
+  const now = Date.now();
+
+  const EXAMS = [
+    {
+      examId: 'EXAM-2024-MIDTERM1', name: 'Term 1 Mid-Term', type: 'mid_term', academicYear: ACADEMIC_YEAR, term: 'Term 1', status: 'scheduled',
+      description: 'Mid-term assessment covering the first term syllabus for Class 8.',
+      classAllocations: [{ class: '8', sections: ['A'] }],
+      timetable: [
+        { date: new Date(now + 20 * DAY_MS), subject: 'Mathematics', class: '8', section: 'A', startTime: '09:00', endTime: '11:00', duration: 120, room: 'R-101', invigilators: [{ name: 'Tariq Teacher', employeeId: 'EMP-0001' }], maxMarks: 100, passingMarks: 35 },
+        { date: new Date(now + 22 * DAY_MS), subject: 'Science', class: '8', section: 'A', startTime: '09:00', endTime: '11:00', duration: 120, room: 'R-102', invigilators: [{ name: 'Rohan Bhatt', employeeId: 'EMP-0003' }], maxMarks: 100, passingMarks: 35 },
+        { date: new Date(now + 24 * DAY_MS), subject: 'English', class: '8', section: 'A', startTime: '09:00', endTime: '11:00', duration: 120, room: 'R-103', invigilators: [{ name: 'Neha Kapoor', employeeId: 'EMP-0002' }], maxMarks: 100, passingMarks: 35 },
+      ],
+      subjectScheme: [
+        { subject: 'Mathematics', class: '8', maxMarks: 100, passingMarks: 35, theoryMarks: 80, practicalMarks: 0, internalMarks: 20 },
+        { subject: 'Science', class: '8', maxMarks: 100, passingMarks: 35, theoryMarks: 70, practicalMarks: 20, internalMarks: 10 },
+        { subject: 'English', class: '8', maxMarks: 100, passingMarks: 35, theoryMarks: 80, practicalMarks: 0, internalMarks: 20 },
+      ],
+      rooms: [
+        { roomNo: 'R-101', capacity: 30, block: 'Main Block', invigilator: 'Tariq Teacher' },
+        { roomNo: 'R-102', capacity: 30, block: 'Science Block', invigilator: 'Rohan Bhatt' },
+        { roomNo: 'R-103', capacity: 30, block: 'Main Block', invigilator: 'Neha Kapoor' },
+      ],
+    },
+    {
+      examId: 'EXAM-2024-UNITTEST1', name: 'Unit Test 1 - Mathematics', type: 'unit_test', academicYear: ACADEMIC_YEAR, term: 'Term 1', status: 'completed',
+      description: 'First unit test covering Rational Numbers and Squares & Square Roots.',
+      classAllocations: [{ class: '8', sections: ['A'] }],
+      timetable: [
+        { date: new Date(now - 15 * DAY_MS), subject: 'Mathematics', class: '8', section: 'A', startTime: '10:00', endTime: '11:00', duration: 60, room: 'R-101', invigilators: [{ name: 'Tariq Teacher', employeeId: 'EMP-0001' }], maxMarks: 50, passingMarks: 18 },
+      ],
+      // marks + results are generated below for every seeded student.
+    },
+    {
+      examId: 'EXAM-2024-ANNUAL', name: 'Annual Examination', type: 'annual', academicYear: ACADEMIC_YEAR, term: 'Annual', status: 'draft',
+      description: 'Draft annual exam plan — timetable not finalized yet.',
+      classAllocations: [{ class: '8', sections: ['A'] }],
+    },
+    {
+      examId: 'EXAM-2024-MOCK1', name: 'Class 8 Mock Test', type: 'mock', academicYear: ACADEMIC_YEAR, term: 'Term 1', status: 'ongoing',
+      description: 'Practice mock test ahead of the mid-term.',
+      classAllocations: [{ class: '8', sections: ['A'] }],
+      timetable: [
+        { date: new Date(now), subject: 'Mathematics', class: '8', section: 'A', startTime: '09:00', endTime: '10:00', duration: 60, room: 'R-101', invigilators: [{ name: 'Tariq Teacher', employeeId: 'EMP-0001' }], maxMarks: 50, passingMarks: 18 },
+      ],
+    },
+    {
+      examId: 'EXAM-2024-INTERNAL1', name: 'Internal Assessment - Science', type: 'internal', academicYear: ACADEMIC_YEAR, term: 'Term 1', status: 'evaluation',
+      description: 'Practical and viva internal assessment — marks entry in progress.',
+      classAllocations: [{ class: '8', sections: ['A'] }],
+      timetable: [
+        { date: new Date(now - 3 * DAY_MS), subject: 'Science', class: '8', section: 'A', startTime: '11:00', endTime: '12:00', duration: 60, room: 'Lab-1', invigilators: [{ name: 'Rohan Bhatt', employeeId: 'EMP-0003' }], maxMarks: 30, passingMarks: 12 },
+      ],
+    },
+    {
+      examId: 'EXAM-2024-COMPETITIVE1', name: 'Inter-School Olympiad Qualifier', type: 'competitive', academicYear: ACADEMIC_YEAR, status: 'cancelled',
+      description: 'Cancelled due to venue unavailability — will be rescheduled next term.',
+      classAllocations: [{ class: '8', sections: ['A'] }],
+    },
+  ];
+
+  let count = 0;
+  const examDocsById = new Map();
+  for (const e of EXAMS) {
+    const doc = await Examination.findOneAndUpdate(
+      { examId: e.examId },
+      { $set: { ...e, createdBy: actorId, updatedBy: actorId } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    examDocsById.set(e.examId, doc);
+    count += 1;
+  }
+
+  // Real marks + published results for the completed Unit Test, across
+  // every seeded student — makes the "completed" filter and a result view
+  // show genuine numbers instead of an empty table.
+  const unitTest = examDocsById.get('EXAM-2024-UNITTEST1');
+  if (unitTest && students.length) {
+    const marks = students.map((s, i) => {
+      const obtained = 28 + ((i * 7) % 20); // deterministic spread, 28-47 out of 50
+      const grade = obtained >= 40 ? 'A' : obtained >= 34 ? 'B' : 'C';
+      return {
+        studentId: s._id, admissionNo: s.admissionNo, name: `${s.personal.firstName} ${s.personal.lastName}`,
+        class: '8', section: 'A', subject: 'Mathematics', marksObtained: obtained, maxMarks: 50, grade,
+      };
+    });
+    const results = marks.map((m) => ({
+      studentId: m.studentId, admissionNo: m.admissionNo, name: m.name,
+      class: '8', section: 'A', totalMarks: m.marksObtained, maxTotalMarks: 50,
+      percentage: Math.round((m.marksObtained / 50) * 100), grade: m.grade, rank: 0,
+      status: m.marksObtained >= 18 ? 'pass' : 'fail',
+      subjectWise: [{ subject: 'Mathematics', marks: m.marksObtained, maxMarks: 50, grade: m.grade, status: m.marksObtained >= 18 ? 'pass' : 'fail' }],
+      published: true, publishedAt: new Date(now - 10 * DAY_MS),
+    }));
+    [...results].sort((a, b) => b.totalMarks - a.totalMarks).forEach((r, idx) => { r.rank = idx + 1; });
+
+    await Examination.updateOne({ _id: unitTest._id }, { $set: { marks, results } });
+  }
+
+  logger.info(`Examinations ready: ${count} (types: mid_term/unit_test/annual/mock/internal/competitive — every status from draft to cancelled represented; marks+results published for the completed unit test).`);
+}
+
+async function upsertEvents(db, { actorId, teacherUser }) {
   const Event = db.model('Event');
   const now = Date.now();
 
+  // Must exactly match the frontend's hardcoded CATEGORIES filter list
+  // (EventDirectory.jsx) — event.category has no schema enum, so a mismatch
+  // here silently breaks the category filter (dropdown offers values that
+  // never match any seeded row).
   const EVENTS = [
     {
-      eventId: 'EVT-2024-SPORTS', name: 'Annual Sports Day', category: 'sports', status: 'approved',
+      eventId: 'EVT-2024-SPORTS', name: 'Annual Sports Day', category: 'Sports', status: 'approved',
       description: 'Inter-house athletics, relay races, and team sports for all classes.',
       schedule: {
         startDate: new Date(now + 15 * DAY_MS), endDate: new Date(now + 15 * DAY_MS),
@@ -978,42 +1106,73 @@ async function upsertEvents(db, { actorId }) {
         ],
       },
       venue: { hall: 'Main Ground', address: 'School Campus', seatingCapacity: 800, facilities: ['Seating', 'PA System', 'First Aid'] },
+      committees: [
+        { role: 'coordinator', name: 'Tariq Teacher', userId: teacherUser?._id || null, responsibility: 'Overall event coordination and schedule management.' },
+        { role: 'staff', name: 'Sunita Pillai', responsibility: 'Track events supervision and equipment.' },
+        { role: 'volunteer', name: 'Rohan Bhatt', responsibility: 'First-aid station and student safety.' },
+      ],
+      photos: [
+        { url: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800', caption: 'Sports day track events, 2023 edition' },
+        { url: 'https://images.unsplash.com/photo-1517649763962-0c623066013b?w=800', caption: 'Prize distribution ceremony' },
+      ],
+      approval: { requestedBy: actorId, requestedAt: new Date(now - 10 * DAY_MS), approvedBy: actorId, approvedAt: new Date(now - 8 * DAY_MS), notes: 'Approved — budget confirmed with administration.' },
     },
     {
-      eventId: 'EVT-2024-FOUNDERS', name: "Founders' Day Celebration", category: 'cultural', status: 'completed',
+      eventId: 'EVT-2024-FOUNDERS', name: "Founders' Day Celebration", category: 'Cultural', status: 'completed',
       description: 'Cultural performances and a felicitation ceremony marking the school\'s founding.',
       schedule: { startDate: new Date(now - 45 * DAY_MS), endDate: new Date(now - 45 * DAY_MS) },
       venue: { hall: 'Auditorium', seatingCapacity: 600 },
+      committees: [
+        { role: 'coordinator', name: 'Neha Kapoor', responsibility: 'Cultural program direction and student rehearsals.' },
+      ],
+      approval: { requestedBy: actorId, requestedAt: new Date(now - 55 * DAY_MS), approvedBy: actorId, approvedAt: new Date(now - 53 * DAY_MS) },
     },
     {
-      eventId: 'EVT-2024-SCIFAIR', name: 'Inter-School Science Fair', category: 'academic', status: 'draft',
+      eventId: 'EVT-2024-SCIFAIR', name: 'Inter-School Science Fair', category: 'Science Fair', status: 'draft',
       description: 'Proposed exhibition of student science projects — not yet approved.',
       schedule: { startDate: new Date(now + 40 * DAY_MS), endDate: new Date(now + 41 * DAY_MS) },
       venue: { hall: 'Science Block' },
+      committees: [
+        { role: 'coordinator', name: 'Rohan Bhatt', responsibility: 'Draft proposal — science department lead.' },
+      ],
     },
     {
-      eventId: 'EVT-2024-TRIP', name: 'Class 8 Excursion', category: 'excursion', status: 'pending_approval',
+      eventId: 'EVT-2024-TRIP', name: 'Class 8 Excursion', category: 'Field Trip', status: 'pending_approval',
       description: 'Day trip proposal, awaiting administrative approval.',
       schedule: { startDate: new Date(now + 20 * DAY_MS), endDate: new Date(now + 20 * DAY_MS) },
       venue: { address: 'City Science Museum' },
+      committees: [
+        { role: 'coordinator', name: 'Tariq Teacher', userId: teacherUser?._id || null, responsibility: 'Chaperone lead and transport coordination.' },
+        { role: 'staff', name: 'Manoj Yadav', responsibility: 'Bus driver for the excursion route.' },
+      ],
+      approval: { requestedBy: teacherUser?._id || actorId, requestedAt: new Date(now - 2 * DAY_MS) },
     },
     {
-      eventId: 'EVT-2024-PARENTMEET', name: 'Parent-Teacher Meeting — Term 1', category: 'academic', status: 'approved',
+      eventId: 'EVT-2024-PARENTMEET', name: 'Parent-Teacher Meeting — Term 1', category: 'Academic', status: 'approved',
       description: 'Term 1 progress discussion for all grades, section-wise slots.',
       schedule: { startDate: new Date(now + 8 * DAY_MS), endDate: new Date(now + 8 * DAY_MS) },
       venue: { hall: 'Classrooms', seatingCapacity: 30 },
+      approval: { requestedBy: actorId, requestedAt: new Date(now - 5 * DAY_MS), approvedBy: actorId, approvedAt: new Date(now - 4 * DAY_MS) },
     },
     {
-      eventId: 'EVT-2024-INDEPENDENCE', name: 'Independence Day Celebration', category: 'cultural', status: 'completed',
+      eventId: 'EVT-2024-INDEPENDENCE', name: 'Independence Day Celebration', category: 'Cultural', status: 'completed',
       description: 'Flag hoisting, patriotic performances, and a special assembly.',
       schedule: { startDate: new Date(now - 20 * DAY_MS), endDate: new Date(now - 20 * DAY_MS) },
       venue: { hall: 'Main Ground', seatingCapacity: 800 },
+      photos: [
+        { url: 'https://images.unsplash.com/photo-1532375810709-75b1da00537c?w=800', caption: 'Flag hoisting ceremony' },
+      ],
+      approval: { requestedBy: actorId, requestedAt: new Date(now - 25 * DAY_MS), approvedBy: actorId, approvedAt: new Date(now - 23 * DAY_MS) },
     },
     {
-      eventId: 'EVT-2024-QUIZ', name: 'Inter-House Quiz Competition', category: 'academic', status: 'approved',
+      eventId: 'EVT-2024-QUIZ', name: 'Inter-House Quiz Competition', category: 'Competition', status: 'approved',
       description: 'General knowledge quiz between the four school houses.',
       schedule: { startDate: new Date(now + 30 * DAY_MS), endDate: new Date(now + 30 * DAY_MS) },
       venue: { hall: 'Auditorium', seatingCapacity: 400 },
+      committees: [
+        { role: 'coordinator', name: 'Sunita Pillai', responsibility: 'Question bank preparation and house coordination.' },
+      ],
+      approval: { requestedBy: actorId, requestedAt: new Date(now - 6 * DAY_MS), approvedBy: actorId, approvedAt: new Date(now - 5 * DAY_MS) },
     },
   ];
 
@@ -1198,7 +1357,8 @@ async function seed() {
   await upsertStudentAccounts(db, { students });
   await upsertFeeTransactions(db, { students, actorId: principalUser._id });
   await upsertExamScheduling(db, { klass, subjects, actorId: principalUser._id });
-  await upsertEvents(db, { actorId: principalUser._id });
+  await upsertExaminations(db, { students, actorId: principalUser._id });
+  await upsertEvents(db, { actorId: principalUser._id, teacherUser });
   await upsertCaretaker(db, { students, actorId: principalUser._id });
   await upsertExtraCaretakers(db, { actorId: principalUser._id });
   await upsertLeaveRequests(db, { teacher, actorId: principalUser._id });
