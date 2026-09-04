@@ -12,7 +12,7 @@ const dashboardStats = asyncHandler(async (req, res) => ApiResponse.ok(res, awai
 const create = asyncHandler(async (req, res) => ApiResponse.created(res, await svc.create(req.db, req.body, req.user.id), 'Event created.'));
 const getById = asyncHandler(async (req, res) => ApiResponse.ok(res, await svc.getById(req.db, req.params.id)));
 const update = asyncHandler(async (req, res) => ApiResponse.ok(res, await svc.update(req.db, req.params.id, req.body, req.user.id), 'Event updated.'));
-const changeStatus = asyncHandler(async (req, res) => ApiResponse.ok(res, await svc.changeStatus(req.db, req.params.id, req.body.status, req.user.id)));
+const changeStatus = asyncHandler(async (req, res) => ApiResponse.ok(res, await svc.changeStatus(req.db, req.params.id, req.body.status, req.user.id, req.body.notes)));
 const addFeedback = asyncHandler(async (req, res) => ApiResponse.ok(res, await svc.addFeedback(req.db, req.params.id, req.body)));
 const addDocument = asyncHandler(async (req, res) => ApiResponse.ok(res, await svc.addDocument(req.db, req.params.id, req.body, req.user.id)));
 const remove = asyncHandler(async (req, res) => ApiResponse.ok(res, await svc.delete(req.db, req.params.id, req.user.id)));
