@@ -15,7 +15,7 @@ class EventService {
   }
 
   async getById(db, id) {
-    const e = await repo.findById(this._m(db), id);
+    const e = await repo.findById(this._m(db), id, { populate: 'approval.requestedBy approval.approvedBy' });
     if (!e) throw ApiError.notFound('Event not found.');
     return e;
   }
@@ -25,9 +25,9 @@ class EventService {
     return repo.updateById(this._m(db), id, payload, actorId);
   }
 
-  async changeStatus(db, id, status, actorId) {
+  async changeStatus(db, id, status, actorId, notes) {
     await this.getById(db, id);
-    return repo.updateStatus(this._m(db), id, status, actorId);
+    return repo.updateStatus(this._m(db), id, status, actorId, notes);
   }
 
   async addFeedback(db, id, feedback) {
