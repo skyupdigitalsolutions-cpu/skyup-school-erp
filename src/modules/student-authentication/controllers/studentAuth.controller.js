@@ -10,12 +10,17 @@ const REFRESH_COOKIE = 'refreshToken';
 
 // Scoped to its own path so it never collides with the staff refresh cookie
 // (same cookie NAME, different path — the browser keeps them separate).
+//
+// See auth.controller.js's refreshCookieOptions() for why `secure` falls
+// back to config.isProd and `domain` is only set when explicitly
+// configured — this is the same cross-origin cookie fix, applied here too.
 function refreshCookieOptions() {
+  const secure = config.cookie.secure || config.isProd;
   return {
     httpOnly: true,
-    secure: config.cookie.secure,
-    sameSite: config.cookie.secure ? 'none' : 'lax',
-    domain: config.cookie.domain,
+    secure,
+    sameSite: secure ? 'none' : 'lax',
+    ...(config.cookie.domain ? { domain: config.cookie.domain } : {}),
     path: `${config.apiPrefix}/student-auth`,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7d — align with JWT_REFRESH_EXPIRES_IN
   };
